@@ -1,0 +1,55 @@
+#!/usr/bin/env osascript -l JavaScript
+
+function run(argv) {
+    inputData = $.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile
+    inputString = ObjC.unwrap($.NSString.alloc.initWithDataEncoding(inputData, $.NSUTF8StringEncoding))
+    options = JSON.parse(inputString)
+    open_iterm(options)
+}
+
+function make_cmd(ip, options) {
+    cmd = "bash -c 'ssh "
+    if (options.hasOwnProperty('ssh_login'))
+        cmd = cmd + '-l ' + options.ssh_login + ' '
+    if (options.hasOwnProperty('ssh_options'))
+        cmd = cmd + options.ssh_options + "  "
+    cmd += ip + "'"
+    return cmd
+}
+
+function open_iterm(options) {
+    iterm = Application('iTerm2')
+    iterm.includeStandardAdditions = true
+
+    ips = options.ips
+    rows = []
+
+    col_count = Math.ceil(Math.sqrt(ips.length))
+    row_count   = Math.round(Math.sqrt(ips.length))
+
+    cmd = make_cmd(ips.pop(), options)
+    win = iterm.createWindowWithDefaultProfile({ command: cmd })
+    if (options.hasOwnProperty('iterm_fullscreen'))
+        win.zoomed = true
+    rows.push([win.tabs[0].sessions[0]])
+
+    for (x = 1; x < row_count; x++) {
+        cmd = make_cmd(ips.pop(), options)
+        session = rows[0][0].splitHorizontallyWithDefaultProfile({ command: cmd })
+        rows.splice(1,0,[session])
+    }
+
+    for (i in rows) {
+        row = rows[i]
+        unused_count = 0
+        if (i == row_count-1)
+            unused_count = col_count - ips.length
+        for (x = 1; x < col_count; x++) {
+            if (x < unused_count) 
+                cmd = "bash -c 'echo -n UNUSED; stty -echo; trap \"\" 2 ;while true; do tail -f /dev/null; done'"
+            else
+                cmd = make_cmd(ips.pop(), options)
+            session = row[0].splitVerticallyWithDefaultProfile({ command: cmd })
+        }
+    }
+}
